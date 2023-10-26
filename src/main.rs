@@ -26,10 +26,12 @@ mod stack_trace;
 mod timer;
 mod utils;
 mod version;
+mod writer;
 
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use anyhow::Error;
@@ -152,6 +154,10 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             format!("{}-{}.{}", name, local_time, ext)
         }
     };
+
+    let (tx, rx) = mpsc::channel();
+    let mut stream_writer = writer::StreamingWriter::new(&filename, tx.clone())?;
+    let handle = writer::start_rx(rx, stream_writer.out_file.clone());
 
     let sampler = sampler::Sampler::new(pid, config)?;
 
@@ -286,6 +292,13 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
             output.increment(trace)?;
         }
 
+        if config.stream_writes {
+            let traces = sample.traces;
+            let traces_str = serde_json::to_string(&traces)?;
+            stream_writer.write(traces_str.as_bytes())?;
+            stream_writer.write("\n".as_bytes())?;
+        }
+
         if let Some(sampling_errors) = sample.sampling_errors {
             for (pid, e) in sampling_errors {
                 warn!("Failed to get stack trace from {}: {}", pid, e);
@@ -304,12 +317,17 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         progress.inc(1);
     }
     progress.finish();
+
+    // stop the receiver thread and wait for all messages to be written out
+    stream_writer.stop_rx();
+    handle.join().unwrap();
+
     // write out a message here (so as not to interfere with progress bar) if we ended earlier
     if !exit_message.is_empty() {
         println!("\n{}{}", lede, exit_message);
     }
 
-    {
+    if !config.stream_writes {
         let mut out_file = std::fs::File::create(&filename)?;
         output.write(&mut out_file)?;
     }

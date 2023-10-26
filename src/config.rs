@@ -59,6 +59,8 @@ pub struct Config {
     pub refresh_seconds: f64,
     #[doc(hidden)]
     pub core_filename: Option<String>,
+    #[doc(hidden)]
+    pub stream_writes: bool,
 }
 
 #[allow(non_camel_case_types)]
@@ -138,6 +140,7 @@ impl Default for Config {
             lineno: LineNo::LastInstruction,
             refresh_seconds: 1.0,
             core_filename: None,
+            stream_writes: false,
         }
     }
 }
@@ -261,6 +264,11 @@ impl Config {
             )
             .arg(gil.clone())
             .arg(idle.clone())
+            .arg(
+                Arg::new("stream_writes")
+                    .long("stream")
+                    .help("Stream writes to output file instead of dumping at the end"),
+            )
             .arg(
                 Arg::new("capture")
                     .long("capture")
@@ -386,6 +394,7 @@ impl Config {
                     std::process::exit(1);
                 }
                 config.hide_progress = matches.occurrences_of("hideprogress") > 0;
+                config.stream_writes = matches.occurrences_of("stream_writes") > 0;
             }
             "top" => {
                 config.sampling_rate = matches.value_of_t("rate")?;
