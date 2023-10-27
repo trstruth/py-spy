@@ -293,10 +293,12 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         }
 
         if config.stream_writes {
-            let traces = sample.traces;
-            let traces_str = serde_json::to_string(&traces)?;
-            stream_writer.write(traces_str.as_bytes())?;
-            stream_writer.write("\n".as_bytes())?;
+            let traces = &sample.traces;
+            for trace in traces {
+                let traces_str = serde_json::to_string(trace)?;
+                stream_writer.write(traces_str.as_bytes())?;
+                stream_writer.write("\n".as_bytes())?;
+            }
         }
 
         if let Some(sampling_errors) = sample.sampling_errors {

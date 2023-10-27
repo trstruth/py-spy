@@ -1,4 +1,5 @@
 use std::io::{Write, Error};
+use std::net::UdpSocket;
 use std::sync::mpsc::{Sender, Receiver};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -43,13 +44,16 @@ impl Write for StreamingWriter {
 
 pub fn start_rx(rx: Receiver<WriteRequest>, out_file: Arc<Mutex<std::fs::File>>) -> JoinHandle<()> {
     thread::spawn(move || {
-        let mut out_file = out_file.lock().unwrap();
+        // let mut out_file = out_file.lock().unwrap();
+        let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+        socket.connect("go_kusto_exporter:8888").expect("connect function failed");
         loop {
             match rx.recv() {
                 Ok(write_request) => {
                     match write_request {
                         WriteRequest::Content(msg) => {
-                            out_file.write(&msg).unwrap();
+                            // out_file.write(&msg).unwrap();
+                            socket.send_to(&msg, "127.0.0.1:8888").unwrap();
                         },
                         WriteRequest::Done => {
                             break;
