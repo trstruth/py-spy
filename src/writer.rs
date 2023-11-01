@@ -46,6 +46,7 @@ pub fn start_rx(rx: Receiver<WriteRequest>, out_file: Arc<Mutex<std::fs::File>>)
     thread::spawn(move || {
         // let mut out_file = out_file.lock().unwrap();
         let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+        socket.set_nonblocking(true).unwrap();
         loop {
             match rx.recv() {
                 Ok(write_request) => {
