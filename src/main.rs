@@ -331,10 +331,8 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
         println!("\n{}{}", lede, exit_message);
     }
 
-    if !config.stream_writes {
-        let mut out_file = std::fs::File::create(&filename)?;
-        output.write(&mut out_file)?;
-    }
+    let mut out_file = std::fs::File::create(&filename)?;
+    output.write(&mut out_file)?;
 
     match config.format.as_ref().unwrap() {
         FileFormat::flamegraph => {
