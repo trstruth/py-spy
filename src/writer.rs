@@ -1,10 +1,12 @@
+use std::env;
 use std::io::{Write, Error};
-use std::net::UdpSocket;
+use std::net::{UdpSocket, SocketAddr};
 use std::sync::mpsc::{Sender, Receiver};
-use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+
 use anyhow;
 
+use crate::config::Config;
 
 pub enum WriteRequest {
     Content(Vec<u8>),
@@ -12,14 +14,14 @@ pub enum WriteRequest {
 }
 
 pub struct StreamingWriter {
-    pub out_file: Arc<Mutex<std::fs::File>>,
+    pub socket_addr: SocketAddr,
     queue_tx: Sender<WriteRequest>,
 }
 
 impl StreamingWriter {
-    pub fn new(filename: &str, queue_tx: Sender<WriteRequest>) -> Result<Self, anyhow::Error> {
+    pub fn new(write_destination: SocketAddr, queue_tx: Sender<WriteRequest>) -> anyhow::Result<Self, anyhow::Error> {
         Ok(StreamingWriter {
-            out_file: Arc::new(Mutex::new(std::fs::File::create(&filename)?)),
+            socket_addr: write_destination,
             queue_tx,
         })
     }
@@ -30,21 +32,21 @@ impl StreamingWriter {
 }
 
 impl Write for StreamingWriter {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+    fn write(&mut self, buf: &[u8]) -> anyhow::Result<usize, Error> {
         match self.queue_tx.send(WriteRequest::Content(buf.to_vec())) {
             Ok(_) => Ok(buf.len()),
             Err(e) => Err(Error::new(std::io::ErrorKind::Other, e)),
         }
     }
 
-    fn flush(&mut self) -> Result<(), Error> {
+    fn flush(&mut self) -> anyhow::Result<(), Error> {
         Ok(())
     }
 }
 
-pub fn start_rx(rx: Receiver<WriteRequest>, out_file: Arc<Mutex<std::fs::File>>) -> JoinHandle<()> {
+pub fn start_rx(rx: Receiver<WriteRequest>, write_destination: SocketAddr) -> JoinHandle<()> {
     thread::spawn(move || {
-        // let mut out_file = out_file.lock().unwrap();
+        println!("streaming samples to {}", write_destination);
         let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
         socket.set_nonblocking(true).unwrap();
         loop {
@@ -53,7 +55,7 @@ pub fn start_rx(rx: Receiver<WriteRequest>, out_file: Arc<Mutex<std::fs::File>>)
                     match write_request {
                         WriteRequest::Content(msg) => {
                             // out_file.write(&msg).unwrap();
-                            socket.send_to(&msg, "go_kusto_exporter:8888").unwrap();
+                            socket.send_to(&msg, write_destination).unwrap();
                         },
                         WriteRequest::Done => {
                             break;
@@ -67,4 +69,16 @@ pub fn start_rx(rx: Receiver<WriteRequest>, out_file: Arc<Mutex<std::fs::File>>)
             }
         }
     })
+}
+
+pub fn find_dest(config: &Config) -> Option<anyhow::Result<SocketAddr>> {
+    if let Some(dest) = &config.stream_destination {
+        // first look in the supplied args
+        Some(dest.parse().map_err(Into::into))
+    } else if let Ok(dest) = env::var("PYSPY_STREAM_DEST") {
+        // then look in the environment
+        Some(dest.parse().map_err(Into::into))
+    } else {
+        None
+    }
 }

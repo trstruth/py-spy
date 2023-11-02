@@ -32,6 +32,7 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::sync::mpsc;
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use anyhow::Error;
@@ -156,8 +157,23 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     };
 
     let (tx, rx) = mpsc::channel();
-    let mut stream_writer = writer::StreamingWriter::new(&filename, tx.clone())?;
-    let handle = writer::start_rx(rx, stream_writer.out_file.clone());
+
+    let stream_writer_dest = match writer::find_dest(&config) {
+        Some(Ok(dest)) => {
+            Some(dest)
+        }
+        Some(Err(e)) => {
+            return Err(format_err!("Failed to parse stream destination: {}", e));
+        }
+        None => None
+    };
+    let mut stream_writer: Option<writer::StreamingWriter> = None;
+    let mut handle: Option<JoinHandle<()>> = None;
+
+    if let Some(dest) = stream_writer_dest {
+        stream_writer = Some(writer::StreamingWriter::new(dest, tx.clone())?);
+        handle = Some(writer::start_rx(rx, dest.clone()));
+    }
 
     let sampler = sampler::Sampler::new(pid, config)?;
 
@@ -292,7 +308,7 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
 
             samples += 1;
             output.increment(trace)?;
-            if config.stream_writes {
+            if let Some(stream_writer) = &mut stream_writer {
                 let traces_str = serde_json::to_string(trace)?;
                 stream_writer.write(traces_str.as_bytes())?;
                 stream_writer.write("\n".as_bytes())?;
@@ -319,8 +335,12 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     progress.finish();
 
     // stop the receiver thread and wait for all messages to be written out
-    stream_writer.stop_rx();
-    handle.join().unwrap();
+    if let Some(stream_writer) = &stream_writer {
+        stream_writer.stop_rx();
+    }
+    if let Some(handle) = handle {
+        handle.join().unwrap();
+    }
 
     // write out a message here (so as not to interfere with progress bar) if we ended earlier
     if !exit_message.is_empty() {

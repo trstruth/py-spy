@@ -60,7 +60,7 @@ pub struct Config {
     #[doc(hidden)]
     pub core_filename: Option<String>,
     #[doc(hidden)]
-    pub stream_writes: bool,
+    pub stream_destination: Option<String>,
 }
 
 #[allow(non_camel_case_types)]
@@ -140,7 +140,7 @@ impl Default for Config {
             lineno: LineNo::LastInstruction,
             refresh_seconds: 1.0,
             core_filename: None,
-            stream_writes: false,
+            stream_destination: None,
         }
     }
 }
@@ -265,9 +265,9 @@ impl Config {
             .arg(gil.clone())
             .arg(idle.clone())
             .arg(
-                Arg::new("stream_writes")
+                Arg::new("stream")
                     .long("stream")
-                    .help("Stream writes to output file instead of dumping at the end"),
+                    .help("Stream samples to a remote destination as udp packets."),
             )
             .arg(
                 Arg::new("capture")
@@ -394,7 +394,7 @@ impl Config {
                     std::process::exit(1);
                 }
                 config.hide_progress = matches.occurrences_of("hideprogress") > 0;
-                config.stream_writes = matches.occurrences_of("stream_writes") > 0;
+                config.stream_destination = matches.value_of("stream").map(|f| f.to_owned());
             }
             "top" => {
                 config.sampling_rate = matches.value_of_t("rate")?;
