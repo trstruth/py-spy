@@ -267,7 +267,11 @@ impl Config {
             .arg(
                 Arg::new("stream")
                     .long("stream")
-                    .help("Stream samples to a remote destination as udp packets."),
+                    .help("Stream samples to a remote destination as udp packets.")
+                    .value_name("stream")
+                    .help("<host>:<port> to stream samples to")
+                    .takes_value(true)
+                    .required(false),
             )
             .arg(
                 Arg::new("capture")

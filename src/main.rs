@@ -30,8 +30,8 @@ mod writer;
 
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -159,13 +159,11 @@ fn record_samples(pid: remoteprocess::Pid, config: &Config) -> Result<(), Error>
     let (tx, rx) = mpsc::channel();
 
     let stream_writer_dest = match writer::find_dest(&config) {
-        Some(Ok(dest)) => {
-            Some(dest)
-        }
+        Some(Ok(dest)) => Some(dest),
         Some(Err(e)) => {
             return Err(format_err!("Failed to parse stream destination: {}", e));
         }
-        None => None
+        None => None,
     };
     let mut stream_writer: Option<writer::StreamingWriter> = None;
     let mut handle: Option<JoinHandle<()>> = None;
